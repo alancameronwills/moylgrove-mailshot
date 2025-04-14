@@ -10,12 +10,6 @@
 
 class MailChimpEmail
 {
-
-    const MailChimpKey = "8e53b745269554c649ca4c61bbc5e84a-us18";
-    const MailChimpAuthorization = "Basic eDo4ZTUzYjc0NTI2OTU1NGM2NDljYTRjNjFiYmM1ZTg0YS11czE4";
-    const MailChimpUrl = "https://us18.api.mailchimp.com/3.0/";
-    const FolderID = "9281a877ef"; // 'monthly' MailChimp campaign folder
-
     private $mailChimpId = 0;
     private $mailChimpWebId = "";
 
