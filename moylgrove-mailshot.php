@@ -20,7 +20,7 @@ class MailChimpEmail extends MailChimpKeys
         $status = 0;
         $output = [];
         try {
-			error_log("Auth: " . self::MailChimpAuthorization);
+			//error_log("Auth: " . self::MailChimpAuthorization);
             $url = self::MailChimpUrl . $cmd;
             $args = ["headers" => ["Authorization" => self::MailChimpAuthorization]];
             // error_log("mailChimpApi " . $url);
@@ -313,15 +313,18 @@ function moylgrove_mailshot_cron()
 function moylgrove_mailshot_install()
 {
     if (!wp_next_scheduled('moylgrove_mailshot_cron')) {
-        wp_schedule_event(strtotime( '2am tomorrow' ), 'daily', 'moylgrove_mailshot_cron');
+        wp_schedule_event(strtotime( 'tomorrow 2:14' ), 'monthly', 'moylgrove_mailshot_cron_hook');
     }
-    error_log(print_r(wp_next_scheduled('moylgrove_mailshot_cron', true)));
+    error_log("Moylgrove Mailshot installed; will run monthly from " 
+			  . date('Y-m-j H:i',wp_next_scheduled('moylgrove_mailshot_cron_hook')));
 }
+
+add_action("moylgrove_mailshot_cron_hook", "moylgrove_mailshot_cron");
 
 
 function moylgrove_mailshot_deactivate()
 {
-	wp_clear_scheduled_hook('moylgrove_mailshot_cron');
+	wp_clear_scheduled_hook('moylgrove_mailshot_cron_hook');
 }
 
 function moylgrove_mailshot_uninstall() {
