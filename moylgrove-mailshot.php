@@ -283,14 +283,25 @@ function moylgrove_mailshot($attributes = [])
     error_log("moylgrove_mailshot");
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
-	if (isset($_GET['ping'])) {
-		MailChimpEmail::ping();
-	} else if (isset($_GET['test']) || $sendToTest) {
-        sendMailChimp($html);
-    } else if (isset($_GET['send'])) {
-    	MailChimpEmail::clearCampaigns();
-        sendMailChimp($html, true);
-    }
+	
+	$cmd = (isset($_GET['ping']) ? "ping" 
+		: (isset($_GET['test']) ? "test" 
+			: (isset($_GET['send']) ? "send" 
+				: "")));
+	if ($cmd != "send") {
+		$html = "<a href='https://moylgrove.wales/14/test-mailshot/?send=1'><button>Broadcast</button></a><hr/>" . $html;
+	}
+	switch ($cmd) {
+		case "ping": 
+			MailChimpEmail::ping();
+			break;
+		case "test" :
+			sendMailChimp($html);
+			break;
+		case "send" :
+			sendMailChimp($html, true);
+			break;
+	}
     return $html;
 }
 add_shortcode("moylgrove-mailshot", "moylgrove_mailshot");
