@@ -8,7 +8,9 @@
  * Licence: GPLv2
  */
 
-class MailChimpEmail
+ include "mailchimp-keys.php";
+ 
+class MailChimpEmail extends MailChimpKeys
 {
     private $mailChimpId = 0;
     private $mailChimpWebId = "";
@@ -18,6 +20,7 @@ class MailChimpEmail
         $status = 0;
         $output = [];
         try {
+			error_log("Auth: " . self::MailChimpAuthorization);
             $url = self::MailChimpUrl . $cmd;
             $args = ["headers" => ["Authorization" => self::MailChimpAuthorization]];
             // error_log("mailChimpApi " . $url);
@@ -96,6 +99,11 @@ class MailChimpEmail
     {
         self::mailChimpApi("campaigns/$this->mailChimpId/actions/send", ["send_type" => "html"]);
     }
+	
+	public static function ping() {
+		$response = self::mailChimpApi("ping");
+		print_r($response);
+	}
 
     public static function clearCampaigns() {
         $response = self::mailChimpApi("campaigns?folder_id=" . self::FolderID);
@@ -273,12 +281,14 @@ function moylgrove_mailshot($attributes = [])
         )
     );
     error_log("moylgrove_mailshot");
-    MailChimpEmail::clearCampaigns();
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
-    if (isset($_GET['test']) || $sendToTest) {
+	if (isset($_GET['ping'])) {
+		MailChimpEmail::ping();
+	} else if (isset($_GET['test']) || $sendToTest) {
         sendMailChimp($html);
     } else if (isset($_GET['send'])) {
+    	MailChimpEmail::clearCampaigns();
         sendMailChimp($html, true);
     }
     return $html;
@@ -305,6 +315,7 @@ function moylgrove_mailshot_install()
     if (!wp_next_scheduled('moylgrove_mailshot_cron')) {
         wp_schedule_event(strtotime( '2am tomorrow' ), 'daily', 'moylgrove_mailshot_cron');
     }
+    error_log(print_r(wp_next_scheduled('moylgrove_mailshot_cron', true)));
 }
 
 
