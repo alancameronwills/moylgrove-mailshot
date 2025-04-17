@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Moylgrove Mailshot
  * Description: Send email about upcoming events
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: Alan Cameron Wills
  * Licence: GPLv2
  */
@@ -284,14 +284,23 @@ function moylgrove_mailshot($attributes = [])
     error_log("moylgrove_mailshot");
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
+    $sendCode = date('z');
 	
 	$cmd = (isset($_GET['ping']) ? "ping" 
 		: (isset($_GET['test']) ? "test" 
-			: (isset($_GET['send']) ? "send" 
+			: (isset($_GET['send']) && $_GET['send']==$sendCode ? "send" 
 				: "")));
+	$buttons = "";
+	global $wp;
+    $thisPage = home_url( $wp->request );
+	$buttons .= "<script>history.replaceState(null, '', '$thisPage');</script>";
+    $buttons .= "<a href='#'><button onclick='if (confirm(\"Send ping?\")){location=\"$thisPage?ping=$sendCode\"}'>Ping MailChimp</button></a> ";
+    $buttons .= "<a href='$thisPage'><button>Review content</button></a> ";
+    $buttons .= "<a href='$thisPage?test=1'><button>Send test mail</button></a> ";
 	if ($cmd != "send") {
-		$html = "<a href='https://moylgrove.wales/14/test-mailshot/?send=1'><button>Broadcast</button></a><hr/>" . $html;
+		$buttons .= "<a href='#'><button class='send' onclick='if (confirm(\"Send to entire mailing list?\")){location=\"$thisPage?send=$sendCode\"}'>Broadcast mail</button></a>";
 	}
+	$html = "<div><style>button {padding: 0 10px;} button:not(:hover){color:gray !important;} .send{outline:2px solid red;}</style>$buttons</div><hr/>" . $html;
 	switch ($cmd) {
 		case "ping": 
 			MailChimpEmail::ping();
