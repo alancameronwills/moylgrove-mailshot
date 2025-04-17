@@ -280,6 +280,7 @@ function moylgrove_mailshot($attributes = [])
             $attributes
         )
     );
+    if (!current_user_can( 'edit_posts' )) return "<h1>Mailshot: Not logged in</h1>";
     error_log("moylgrove_mailshot");
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
