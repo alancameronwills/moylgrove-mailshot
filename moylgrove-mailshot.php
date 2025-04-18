@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Moylgrove Mailshot
  * Description: Send email about upcoming events
- * Version: 1.1.2
+ * Version: 1.2.1
  * Author: Alan Cameron Wills
  * Licence: GPLv2
  */
@@ -86,10 +86,12 @@ class MailChimpEmail extends MailChimpKeys
 
     public function test()
     {
-        self::mailChimpApi(
+    	$current_user = wp_get_current_user();
+		$email = $current_user->user_email;
+        return self::mailChimpApi(
             "campaigns/$this->mailChimpId/actions/test",
             [
-                "test_emails" => ["alan@cameronwills.org"],
+                "test_emails" => ["$email"],
                 "send_type" => "html"
             ]
         );
@@ -97,12 +99,12 @@ class MailChimpEmail extends MailChimpKeys
 
     public function send()
     {
-        self::mailChimpApi("campaigns/$this->mailChimpId/actions/send", ["send_type" => "html"]);
+        return self::mailChimpApi("campaigns/$this->mailChimpId/actions/send", ["send_type" => "html"]);
     }
 	
 	public static function ping() {
 		$response = self::mailChimpApi("ping");
-		print_r($response);
+		return $response;
 	}
 
     public static function clearCampaigns() {
@@ -123,9 +125,9 @@ function sendMailChimp($html, $full = false)
     $mail = new MailChimpEmail();
     $mail->setContent($html);
     if ($full) {
-        $mail->send();
+        return $mail->send();
     } else {
-        $mail->test();
+        return $mail->test();
     }
 }
 
@@ -224,7 +226,7 @@ function eventsToHtml($events)
             text-align: right;
         }
     </style>
-    <div>
+    <div class="events-wrapped">
         <h2>Coming up in Moylgrove</h2>
         <p>Mostly in the Old School Hall</p>
         <div class="events">
@@ -267,6 +269,7 @@ function eventsToHtml($events)
 }
 
 
+
 /****  SHORTCODE  ****/
 
 function moylgrove_mailshot($attributes = [])
@@ -281,6 +284,7 @@ function moylgrove_mailshot($attributes = [])
         )
     );
     if (!current_user_can( 'edit_posts' )) return "<h1>Mailshot: Not logged in</h1>";
+    
     error_log("moylgrove_mailshot");
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
@@ -293,26 +297,29 @@ function moylgrove_mailshot($attributes = [])
 	$buttons = "";
 	global $wp;
     $thisPage = home_url( $wp->request );
+	
+	// Avoid accidental sending by browser Back or Refresh
 	$buttons .= "<script>history.replaceState(null, '', '$thisPage');</script>";
+	
     $buttons .= "<a href='#'><button onclick='if (confirm(\"Send ping?\")){location=\"$thisPage?ping=$sendCode\"}'>Ping MailChimp</button></a> ";
     $buttons .= "<a href='$thisPage'><button>Review content</button></a> ";
     $buttons .= "<a href='$thisPage?test=1'><button>Send test mail</button></a> ";
 	if ($cmd != "send") {
 		$buttons .= "<a href='#'><button class='send' onclick='if (confirm(\"Send to entire mailing list?\")){location=\"$thisPage?send=$sendCode\"}'>Broadcast mail</button></a>";
 	}
-	$html = "<div><style>button {padding: 0 10px;} button:not(:hover){color:gray !important;} .send{outline:2px solid red;}</style>$buttons</div><hr/>" . $html;
 	switch ($cmd) {
 		case "ping": 
-			MailChimpEmail::ping();
+			echo MailChimpEmail::ping();
 			break;
 		case "test" :
-			sendMailChimp($html);
+			print_r(sendMailChimp($html));
 			break;
 		case "send" :
-			sendMailChimp($html, true);
+			print_r(sendMailChimp($html, true));
 			break;
 	}
-    return $html;
+    return 	"<div><style>button {padding: 0 10px;} button:not(:hover){color:gray !important;} .send{outline:2px solid red;}</style>$buttons</div><hr/>" . $html;
+
 }
 add_shortcode("moylgrove-mailshot", "moylgrove_mailshot");
 
@@ -346,6 +353,7 @@ add_action("moylgrove_mailshot_cron_hook", "moylgrove_mailshot_cron");
 function moylgrove_mailshot_deactivate()
 {
 	wp_clear_scheduled_hook('moylgrove_mailshot_cron_hook');
+	delete_option('moylgrove_mailshot_nonce');
 }
 
 function moylgrove_mailshot_uninstall() {
@@ -354,3 +362,104 @@ function moylgrove_mailshot_uninstall() {
 register_activation_hook(__FILE__, 'moylgrove_mailshot_install');
 register_deactivation_hook(__FILE__, 'moylgrove_mailshot_deactivate');
 register_uninstall_hook(__FILE__, 'moylgrove_mailshot_uninstall');
+
+
+//****  ADMIN PAGE *****/
+
+add_action('wp_ajax_moylgrove_mailshot_ajax', 'moylgrove_mailshot_ajax');
+
+
+function moylgrove_mailshot_ajax() {
+	$cmd = $_POST['go'];
+	error_log("moylgrove_mailshot_ajax $cmd");
+	$ns = get_option('moylgrove_mailshot_nonce');
+	check_ajax_referer("moylgrove{$ns}_mailshot");
+    $events = moylgrove_get_upcoming_events();
+    $html = eventsToHtml($events);
+	$result = ["status"=>0,"body"=>""];
+	switch ($cmd) {
+		case "ping": 
+			$result = MailChimpEmail::ping();
+			break;
+		case "test" :
+			$result = sendMailChimp($html);
+			break;
+		case "send" :
+			$result = sendMailChimp($html, true);
+			break;
+	}
+	echo json_encode($result);
+	wp_die();
+}
+
+add_action('admin_menu', 'moylgrove_mailshot_setup_menu');
+ 
+function moylgrove_mailshot_setup_menu(){
+    add_menu_page( 'Mailshot', 'Moylgrove Mailshot', 'manage_options', 'moylgrove-mailshot', 'moylgrove_mailshot_admin_page' );
+}
+ 
+function moylgrove_mailshot_admin_page(){
+	$ns = date('YmjHi');
+	$nonce = wp_create_nonce("moylgrove{$ns}_mailshot");
+	update_option('moylgrove_mailshot_nonce', $ns);
+    ?>
+    <h1>Moylgrove Mailshot</h1>
+	<script>
+		function showAjaxResponse (d) {
+			const r = document.getElementById("response");
+			r.innerHTML = d;
+		}
+		function sendAjax (button, action='ping', noconfirm=false) {
+			if (noconfirm || confirm('Send to entire mailing list?')) {
+				let form = new FormData();
+				form.append('action', 'moylgrove_mailshot_ajax');
+				form.append('go', action);
+				form.append('_ajax_nonce', '<?=$nonce?>');
+				fetch(ajaxurl, {
+						method: 'POST',
+						body: form
+					}).then (r=> r.json()).
+					then(r => {
+					if (r.status != 204) showAjaxResponse(JSON.stringify(r.body));
+					if (r.status >= 200 && r.status < 300) {
+						button.style.backgroundColor = "lightgreen";
+						setTimeout(()=>{button.style.backgroundColor='#e0ffe0'},2000);
+					} else {
+						button.style.backgroundColor = "red";
+						setTimeout(()=>{button.style.backgroundColor='pink'},2000);
+					}
+				}
+						).
+					catch(e=>showAjaxResponse(e)) ;
+			}
+		}
+</script>
+	<div id="response"></div>
+	<div style="margin: 6px 0">
+		<button onclick="sendAjax(this, 'ping', true)">Ping MailChimp</button>
+		<button onclick="sendAjax(this, 'test', true)">Send Test mail</button>
+		<button onclick="sendAjax(this, 'send')">Broadcast</button>
+	</div>
+	
+	<div>
+		
+		<style>
+			.events-wrapped { 
+				background-color: white; 
+				max-width: 400px; 
+				padding:10px; 
+				outline:1px solid blue; 
+				font-size: 16px;
+			}
+			.events>div { margin: 10px;}
+			.events>div.ellipsis {margin:0}
+		</style>
+    <?php
+    $events = moylgrove_get_upcoming_events();
+    $html = eventsToHtml($events);
+		echo $html;
+	?>
+</div>
+    <?php
+	
+}
