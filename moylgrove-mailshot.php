@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Moylgrove Mailshot
  * Description: Send email about upcoming events
- * Version: 1.2.1
+ * Version: 1.2.2
  * Author: Alan Cameron Wills
  * Licence: GPLv2
  */
@@ -23,7 +23,7 @@ class MailChimpEmail extends MailChimpKeys
 			//error_log("Auth: " . self::MailChimpAuthorization);
             $url = self::MailChimpUrl . $cmd;
             $args = ["headers" => ["Authorization" => self::MailChimpAuthorization]];
-            // error_log("mailChimpApi " . $url);
+            //error_log("mailChimpApi " . $url);
             if ($body != null) {
                 //error_log (" --- $method ===");
                 $args["body"] = json_encode($body);
@@ -109,14 +109,23 @@ class MailChimpEmail extends MailChimpKeys
 
     public static function clearCampaigns() {
         $response = self::mailChimpApi("campaigns?folder_id=" . self::FolderID);
-        if (200 == $response['status']) {
-            forEach ($response['body'] as $campaign) {
-				//error_log(print_r($campaign, true));
-                if (isset($campaign[0]->status) && $campaign[0]->status == "sent" && $campaign[0]->settings->folder_id == self::FolderID) {
-                    self::mailChimpApi("campaigns/{$campaign[0]->id}", ['x'=>''], "DELETE");
+            $status = $response['status'];
+            $output = $response['body'];
+		$deleted = 0;
+		$count = 0;
+        if (200 == $status) {
+            forEach ($output->campaigns as $campaign) {
+				$count++;
+				//error_log("D {$campaign->settings->title}");
+                if (isset($campaign->status) && $campaign->status != "sent"
+						&& $campaign->settings->folder_id == self::FolderID) {
+					// error_log("  DELETE {$campaign->settings->title} ");
+                    self::mailChimpApi("campaigns/{$campaign->id}", ['x'=>''], "DELETE");
+					$deleted++;
                 }
             }
         }
+		return ['status'=>$status, 'body'=> "Deleted $deleted / $count"];
     }
 }
 
@@ -335,14 +344,34 @@ function moylgrove_mailshot_cron()
     sendMailChimp($html, false);
 }
 
+function moylgrove_mailshot_set_cron($reset=false, $soon=false, $in_a_month=false) {
+	$existing = wp_next_scheduled('moylgrove_mailshot_cron_hook');
+	$toggleOff = $existing && !$reset && !$soon && !$in_a_month;
+	error_log("moylgrove_mailshot_set_cron $existing toggleOff=$toggleOff");
+	$when = "";
+	if ($reset || $toggleOff) {
+		error_log ("  Clear");
+		$when = "cron off";
+		wp_clear_scheduled_hook('moylgrove_mailshot_cron_hook');
+	}
+	if (!$toggleOff) {
+		$when = $soon ? 'tomorrow 2:14' : ($in_a_month ? '+1 month 2:14' : 'first monday of next month 2:14');
+		error_log ("  Reset $when");
+	
+    	if (!wp_next_scheduled('moylgrove_mailshot_cron_hook')) {
+    		error_log ("  Resetting $when");
+	    	wp_schedule_event(strtotime( $when ), 'monthly', 'moylgrove_mailshot_cron_hook');
+    	}
+	}
+	return ["status"=>200,"body"=>"$when"];
+}
+
 
 /****  INSTALLATION  ****/
 
 function moylgrove_mailshot_install()
 {
-    if (!wp_next_scheduled('moylgrove_mailshot_cron')) {
-        wp_schedule_event(strtotime( 'tomorrow 2:14' ), 'monthly', 'moylgrove_mailshot_cron_hook');
-    }
+    moylgrove_mailshot_set_cron(false, true);
     error_log("Moylgrove Mailshot installed; will run monthly from " 
 			  . date('Y-m-j H:i',wp_next_scheduled('moylgrove_mailshot_cron_hook')));
 }
@@ -378,6 +407,9 @@ function moylgrove_mailshot_ajax() {
     $html = eventsToHtml($events);
 	$result = ["status"=>0,"body"=>""];
 	switch ($cmd) {
+		case "clear": 
+			$result = MailChimpEmail::clearCampaigns();
+			break;
 		case "ping": 
 			$result = MailChimpEmail::ping();
 			break;
@@ -386,11 +418,17 @@ function moylgrove_mailshot_ajax() {
 			break;
 		case "send" :
 			$result = sendMailChimp($html, true);
+			moylgrove_mailshot_set_cron(true, false, true);
+			break;
+		case "setcron": 
+			$result = moylgrove_mailshot_set_cron();
 			break;
 	}
+	$result["scheduled"] = wp_next_scheduled('moylgrove_mailshot_cron_hook');
 	echo json_encode($result);
 	wp_die();
 }
+
 
 add_action('admin_menu', 'moylgrove_mailshot_setup_menu');
  
@@ -403,50 +441,20 @@ function moylgrove_mailshot_admin_page(){
 	$nonce = wp_create_nonce("moylgrove{$ns}_mailshot");
 	update_option('moylgrove_mailshot_nonce', $ns);
     ?>
-    <h1>Moylgrove Mailshot</h1>
-	<script>
-		function showAjaxResponse (d) {
-			const r = document.getElementById("response");
-			r.innerHTML = d;
-		}
-		function sendAjax (button, action='ping', noconfirm=false) {
-			if (noconfirm || confirm('Send to entire mailing list?')) {
-				let form = new FormData();
-				form.append('action', 'moylgrove_mailshot_ajax');
-				form.append('go', action);
-				form.append('_ajax_nonce', '<?=$nonce?>');
-				fetch(ajaxurl, {
-						method: 'POST',
-						body: form
-					}).then (r=> r.json()).
-					then(r => {
-					if (r.status != 204) showAjaxResponse(JSON.stringify(r.body));
-					if (r.status >= 200 && r.status < 300) {
-						button.style.backgroundColor = "lightgreen";
-						setTimeout(()=>{button.style.backgroundColor='#e0ffe0'},2000);
-					} else {
-						button.style.backgroundColor = "red";
-						setTimeout(()=>{button.style.backgroundColor='pink'},2000);
-					}
-				}
-						).
-					catch(e=>showAjaxResponse(e)) ;
-			}
-		}
-</script>
-	<div id="response"></div>
-	<div style="margin: 6px 0">
-		<button onclick="sendAjax(this, 'ping', true)">Ping MailChimp</button>
-		<button onclick="sendAjax(this, 'test', true)">Send Test mail</button>
-		<button onclick="sendAjax(this, 'send')">Broadcast</button>
-	</div>
-	
-	<div>
-		
 		<style>
+			#mailshot-admin {
+				max-width:400px;
+			}
+			.schedule {
+				margin: 6px 0;
+				display:flex;
+				justify-content: space-between;
+    			align-items: center;
+			}
+			button {background-color:white;}
 			.events-wrapped { 
 				background-color: white; 
-				max-width: 400px; 
+				max-width: 100%; 
 				padding:10px; 
 				outline:1px solid blue; 
 				font-size: 16px;
@@ -454,12 +462,69 @@ function moylgrove_mailshot_admin_page(){
 			.events>div { margin: 10px;}
 			.events>div.ellipsis {margin:0}
 		</style>
+
+	<div id="mailshot-admin">
+    <h1>Moylgrove Mailshot</h1>
+	<div class="schedule">
+		<div id='cron'></div>
+		<div><button onclick="sendAjax(this, 'setcron')">Toggle automatic</button></div>
+	</div>
+	<script>
+		function showAjaxResponse (d) {
+			const r = document.getElementById("response");
+			r.innerHTML = d;
+		}
+		function showSchedule(ts) {
+			let s = !ts ? "No automatic mailshot scheduled" : 
+				"Next automatic mailshot: " + new Date(ts * 1000).toLocaleString();
+			document.getElementById("cron").innerHTML = s;
+		}
+		showSchedule(<?= wp_next_scheduled('moylgrove_mailshot_cron_hook') ?>);
+		function sendAjax (button, action='ping', confirmation) {
+			button.disabled = true;
+			setTimeout(()=>button.disabled=false, 3000);
+			
+			if (!confirmation || confirm(confirmation)) {
+				let form = new FormData();
+				form.append('action', 'moylgrove_mailshot_ajax');
+				form.append('go', action);
+				form.append('_ajax_nonce', '<?=$nonce?>');
+				fetch(ajaxurl, {
+						method: 'POST',
+						body: form
+					}).then (r=> r.json())
+					.then(r => {
+						if (r.status != 204) showAjaxResponse(JSON.stringify(r.body));
+						if (r.status >= 200 && r.status < 300) {
+							button.style.backgroundColor = "lightgreen";
+							setTimeout(()=>{button.style.backgroundColor='#e0ffe0'},2000);
+						} else {
+							button.style.backgroundColor = "red";
+							setTimeout(()=>{button.style.backgroundColor='pink'},2000);
+						}
+						showSchedule(r.scheduled);
+					})
+					.catch(e=>showAjaxResponse(e)) ;
+			}
+		}
+		
+</script>
+	<div id="response"></div>
+	<div style="margin: 6px 0">
+		<button onclick="sendAjax(this, 'clear', 'Clear generated emails?')">Clear drafts</button>
+		<button onclick="sendAjax(this, 'ping')">Ping MailChimp</button>
+		<button onclick="sendAjax(this, 'test')">Send Test mail</button>
+		<button style="outline:1px solid red;" onclick="sendAjax(this, 'send', 'Send mail to whole list?')">Broadcast</button>
+	</div>
+	
+	<div>
+		
     <?php
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
 		echo $html;
 	?>
-</div>
+</div></div>
     <?php
 	
 }
