@@ -341,7 +341,7 @@ function moylgrove_mailshot_cron()
     error_log("moylgrove_mailshot_cron");
     $events = moylgrove_get_upcoming_events();
     $html = eventsToHtml($events);
-    sendMailChimp($html, false);
+    sendMailChimp($html, true);
 }
 
 function moylgrove_mailshot_set_cron($reset=false, $soon=false, $in_a_month=false) {
