@@ -176,7 +176,7 @@ function moylgrove_get_upcoming_events()
             $image_url = $image_arr[0];
             //error_log("Image " . $image_url);
         }
-        $content = apply_filters('the_content', get_the_content());
+        $content = get_the_content(); //apply_filters('the_content', get_the_content());
         $booking = preg_match("/booking/i", $content);
 
         $events[] = [
@@ -206,7 +206,8 @@ function shortContent($content)
     return preg_replace("/\n+/", "<br/>", trim(preg_replace(
         "/<.*?>/",
         "",
-        join("\n", array_slice(preg_split("/<\/p>/", $content, 3, PREG_SPLIT_NO_EMPTY), 0, 2))
+        join("\n", array_slice(preg_split("/<\/p>/", 
+        	preg_replace("/\[.*?\]/s", "", $content), 3, PREG_SPLIT_NO_EMPTY), 0, 2))
     )));
 }
 
