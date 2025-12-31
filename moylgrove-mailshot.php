@@ -177,7 +177,7 @@ function moylgrove_get_upcoming_events()
             //error_log("Image " . $image_url);
         }
         $content = get_the_content(); //apply_filters('the_content', get_the_content());
-        $booking = preg_match("/booking/i", $content);
+        $booking = preg_match("/moylgrove-[-a-z]*form/", $content);
 
         $events[] = [
             "title" => get_the_title(),
