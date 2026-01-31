@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Moylgrove Mailshot
  * Description: Send email about upcoming events
- * Version: 1.2.2
+ * Version: 1.2.3
  * Author: Alan Cameron Wills
  * Licence: GPLv2
  */
@@ -225,6 +225,9 @@ function eventsToHtml($events)
             font-weight: bold;
             font-size: x-large;
         }
+        .eventSubHead {
+            font-size: large;
+        }
 
         .booking {
             color: darkred;
@@ -246,6 +249,9 @@ function eventsToHtml($events)
                 <hr />
                 <div class="eventHead">
                     <a href="<?= $event['url'] ?>"><?= $event['title'] ?></a>
+                </div>
+                <div class="eventSubHead">
+                    <a href="<?= $event['url'] ?>"><?= $event['subtitle'] ?></a>
                 </div>
                 <?php
                 if ($event['booking']) {
